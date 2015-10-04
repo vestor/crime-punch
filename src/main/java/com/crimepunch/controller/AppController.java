@@ -12,7 +12,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @Slf4j
@@ -62,6 +65,13 @@ public class AppController {
 	@ResponseBody
 	public void updateData(@RequestBody(required = false) List<PointEntity> pointData) {
 		preProcessingService.computeGridPointsData(pointData);
+	}
+
+	@RequestMapping(method = RequestMethod.POST, value = "/sos")
+	@ResponseBody
+	public Map<String,Object> sendOutSOS(@RequestBody UserLocationUpdate userLocationUpdate) throws IOException {
+		userService.sendOutSOS(userLocationUpdate);
+		return Collections.singletonMap("value",true);
 	}
 
 

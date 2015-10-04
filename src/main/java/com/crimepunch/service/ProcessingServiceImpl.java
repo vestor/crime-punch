@@ -2,6 +2,7 @@ package com.crimepunch.service;
 
 import com.crimepunch.entity.GridPointEntity;
 import com.crimepunch.entity.PointEntity;
+import com.crimepunch.entity.SosEntity;
 import com.crimepunch.entity.UserEntity;
 import com.crimepunch.pojo.*;
 import com.crimepunch.repository.GridPointRepository;
@@ -14,7 +15,9 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
+import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Created by manish on 3/10/15.
@@ -34,7 +37,14 @@ public class ProcessingServiceImpl implements ProcessingService{
     @Autowired
     UserService userService;
 
+    @Autowired
+    MessageBroadcaster messageBroadcaster;
+
     Map<Gender,List<CrimeType>> GENDER_BASED_CRIMES = new HashMap<>();
+
+
+
+
 
     @PostConstruct
     private void buildMaps() {
@@ -75,7 +85,7 @@ public class ProcessingServiceImpl implements ProcessingService{
 
     @Override
     public LocationUpdateResponse getUpdatedGridPoints(UserLocationUpdate userLocationUpdate) {
-        return getUpdatedGridPoints(userLocationUpdate.getId(),userLocationUpdate.getLocation());
+        return getUpdatedGridPoints(userLocationUpdate.getId(), userLocationUpdate.getLocation());
     }
 
     @Override
@@ -93,7 +103,7 @@ public class ProcessingServiceImpl implements ProcessingService{
             gridPointList.add(GridPoint.builder().location(a.getLocation()).score(finalScore).build());
         });
 
-        List<PointEntity> interestingPoints = mongoTemplate.find(Query.query(Criteria.where("pointType").ne(PointType.CRIME)),PointEntity.class);
+        List<PointEntity> interestingPoints = mongoTemplate.find(Query.query(Criteria.where("location").near(point).andOperator(Criteria.where("pointType").ne(PointType.CRIME)).maxDistance(Constants.MAXIMUM_RESOLUTION_METRES)),PointEntity.class);
 
         return LocationUpdateResponse.builder().crimeTypes(crimeTypes).gridPoints(gridPointList).interestingPoints(interestingPoints).build();
     }
@@ -102,6 +112,22 @@ public class ProcessingServiceImpl implements ProcessingService{
     public LocationUpdateResponse getUpdatedGridPoints(String userId, Location location) {
         UserEntity userEntity = userService.getUser(userId);
         return getUpdatedGridPoints(userEntity,location);
+    }
+
+    @Override
+    public void broadcastSOS(SosEntity sosEntity) throws IOException {
+        Point point = new Point(sosEntity.getLocation().getLatitude(), sosEntity.getLocation().getLongitude());
+        UserEntity userEntity = userService.getUser(sosEntity.getRequestingUserId());
+        String userName = userEntity.getAttributes().get("name") != null ? (String) userEntity.getAttributes().get("name") : userEntity.getId();
+        List<PointEntity> pointsNearby = mongoTemplate.find(Query.query(Criteria.where("location").near(point).andOperator(Criteria.where("pointType").ne(PointType.CRIME)).maxDistance(Constants.MAXIMUM_SOS_DISTANCE)),PointEntity.class);
+        //Sending out sms to to people
+        List<UserEntity> usersToSend = mongoTemplate.find(Query.query(Criteria.where("id").in(pointsNearby.stream().filter(e -> e.getPointType() == PointType.PERSON ).map(f -> (String)f.getAttributes().get("userId")).collect(Collectors.toList()))),UserEntity.class);
+        Set<String> gcmIds = usersToSend.stream().filter(b -> b.getAttributes().containsKey("gcmId")).map(a -> (String) a.getAttributes().get("gcmId")).collect(Collectors.toSet());
+        System.out.println("gcmIds = " + gcmIds);
+        for(String gcmId : gcmIds) {
+            messageBroadcaster.sendOutMessage(userName + " needs your help!", sosEntity.getLocation(), gcmId);
+        }
+
     }
 
 }

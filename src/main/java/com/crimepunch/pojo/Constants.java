@@ -12,4 +12,5 @@ public class Constants {
     public static final Integer TIME_RANGE_MINUTES = 30;
     public static final Integer AGE_RANGE_YEARS = 2;
     public static final Double MAXIMUM_RESOLUTION_METRES = 0.5/111.12;
+    public static final Double MAXIMUM_SOS_DISTANCE = 0.4/111.12;
 }
